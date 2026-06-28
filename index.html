@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pulsewire · AI Agent Data Marketplace Console</title>
+
+<!-- React 18 UMD -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<!-- Chart.js pinned -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<!-- Lucide icons -->
+<script src="https://unpkg.com/lucide@0.378.0/dist/umd/lucide.js"></script>
+
+<style>
+  :root{
+    --bg-0:#0B0E14;
+    --bg-1:#121824;
+    --emerald:#0D6A37;
+    --emerald-bright:#1FB866;
+    --teal:#1FA0A0;
+    --gold:#E0B25C;
+    --amber:#D69B30;
+    --white:#F4F6F8;
+    --grey-text:#A6A6A6;
+    --grey-static:#6B7280;
+    --card-border:rgba(255,255,255,0.08);
+    --card-bg:rgba(20,26,38,0.55);
+    --danger:#D9534F;
+    --mono:'JetBrains Mono','SF Mono',ui-monospace,Menlo,Consolas,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:radial-gradient(ellipse 120% 80% at 20% -10%, #0E1F18 0%, var(--bg-0) 45%) ,var(--bg-0);
+    color:var(--white);
+    font-family:var(--sans);
+    min-height:100vh;
+    overflow-x:hidden;
+  }
+  @font-face{ font-family:'Inter'; src:local('Inter'); }
+
+  ::selection{ background:rgba(31,184,102,0.35); }
+
+  /* scrollbars */
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.12); border-radius:8px; }
+  ::-webkit-scrollbar-thumb:hover{ background:rgba(255,255,255,0.2); }
+
+  button{ font-family:inherit; cursor:pointer; }
+  a{ color:inherit; text-decoration:none; }
+
+  /* ---------- Aurora background blobs ---------- */
+  .aurora-layer{
+    position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;
+  }
+  .blob{
+    position:absolute; border-radius:50%;
+    filter:blur(80px); opacity:0.35; mix-blend-mode:screen;
+    animation:drift 22s ease-in-out infinite;
+  }
+  .blob.b1{ width:560px; height:560px; background:var(--emerald); top:-160px; left:-120px; animation-delay:0s; }
+  .blob.b2{ width:480px; height:480px; background:var(--teal); top:20%; right:-160px; animation-delay:-7s; }
+  .blob.b3{ width:420px; height:420px; background:#0E8F52; bottom:-140px; left:30%; animation-delay:-14s; }
+  @keyframes drift{
+    0%,100%{ transform:translate(0,0) scale(1); }
+    33%{ transform:translate(40px,-30px) scale(1.08); }
+    66%{ transform:translate(-30px,25px) scale(0.94); }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .blob{ animation:none; }
+  }
+
+  /* ---------- App shell ----------
+     Desktop: 3-column grid, rail | main | right-panel side by side.
+     Tablet/mobile: right-panel drops BELOW main instead of squeezing into
+     a tight column — same grid, just a different template + reflowed
+     panel-card layout, so nothing has to be hidden. */
+  .app-shell{
+    position:relative; z-index:1;
+    display:grid;
+    grid-template-columns:76px 1fr 320px;
+    grid-template-rows:64px 1fr;
+    grid-template-areas:
+      "rail topbar topbar"
+      "rail main panel";
+    min-height:100vh;
+  }
+  @media (max-width:1180px){
+    .app-shell{
+      grid-template-columns:76px 1fr;
+      grid-template-rows:64px auto auto;
+      grid-template-areas:
+        "rail topbar"
+        "rail main"
+        "rail panel";
+    }
+    .right-panel{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
+      gap:16px;
+      padding:0 22px 30px 22px;
+      max-height:none;
+      overflow:visible;
+    }
+  }
+  @media (max-width:640px){
+    .app-shell{ grid-template-columns:60px 1fr; }
+    .rail{ padding:14px 0; }
+    .rail-item{ width:40px; height:40px; }
+    .right-panel{ grid-template-columns:1fr; padding:0 14px 26px 14px; }
+    .main{ padding:16px 14px 30px 14px; }
+    .topbar{ padding:0 12px; gap:10px; }
+  }
+
+  /* ---------- Sidebar rail ---------- */
+  .rail{
+    grid-area:rail;
+    background:rgba(10,13,20,0.65);
+    backdrop-filter:blur(18px);
+    border-right:1px solid var(--card-border);
+    display:flex; flex-direction:column; align-items:center;
+    padding:18px 0;
+    position:relative; z-index:5;
+  }
+  .rail-logo{
+    width:36px; height:36px; border-radius:10px;
+    background:linear-gradient(135deg,var(--emerald-bright),var(--teal));
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:28px; box-shadow:0 0 22px rgba(31,184,102,0.45);
+  }
+  .rail-nav{ display:flex; flex-direction:column; gap:6px; flex:1; }
+  .rail-item{
+    position:relative; width:48px; height:48px; border-radius:14px;
+    display:flex; align-items:center; justify-content:center;
+    background:transparent; border:none; color:var(--grey-text);
+    transition:color .18s ease;
+  }
+  .rail-item:hover{ color:var(--white); }
+  .rail-item.active{ color:var(--white); }
+  .rail-item.active::before{
+    content:''; position:absolute; inset:-2px; border-radius:14px;
+    background:radial-gradient(circle, rgba(31,184,102,0.35) 0%, rgba(31,184,102,0) 72%);
+    box-shadow:0 0 18px 2px rgba(31,184,102,0.35);
+    z-index:-1;
+  }
+  .rail-item .dot{
+    position:absolute; bottom:4px; right:8px; width:6px; height:6px; border-radius:50%;
+    background:var(--emerald-bright); box-shadow:0 0 6px var(--emerald-bright);
+  }
+  .rail-tooltip{
+    position:absolute; left:60px; top:50%; transform:translateY(-50%);
+    background:#1A2230; border:1px solid var(--card-border); padding:6px 10px;
+    border-radius:8px; font-size:12px; white-space:nowrap; opacity:0; pointer-events:none;
+    transition:opacity .15s ease; box-shadow:0 6px 18px rgba(0,0,0,0.4); z-index:50;
+  }
+  .rail-item:hover .rail-tooltip{ opacity:1; }
+
+  .rail-wallet{
+    width:56px; display:flex; flex-direction:column; align-items:center; gap:8px;
+    padding-top:14px; border-top:1px solid var(--card-border);
+  }
+  .wallet-orb{
+    width:38px; height:38px; border-radius:50%; position:relative;
+    background:linear-gradient(135deg,#142A20,#0E1F18);
+    border:1px solid rgba(31,184,102,0.4);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .wallet-orb .pulse{
+    position:absolute; width:10px; height:10px; border-radius:50%;
+    background:var(--emerald-bright); bottom:-2px; right:-2px;
+    box-shadow:0 0 8px var(--emerald-bright);
+    animation:pulseGlow 2s ease-in-out infinite;
+  }
+  @keyframes pulseGlow{ 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .wallet-meta{ text-align:center; }
+  .wallet-addr{ font-family:var(--mono); font-size:10px; color:var(--white); }
+  .wallet-bal{ font-size:10px; color:var(--grey-text); margin-top:2px; }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    grid-area:topbar;
+    background:rgba(10,13,20,0.45);
+    backdrop-filter:blur(18px);
+    border-bottom:1px solid var(--card-border);
+    display:flex; align-items:center; gap:20px;
+    padding:0 24px;
+    position:relative; z-index:4;
+  }
+  .search-box{
+    flex:1; max-width:420px;
+    display:flex; align-items:center; gap:8px;
+    background:rgba(255,255,255,0.04);
+    border:1px solid var(--card-border);
+    border-radius:10px; padding:8px 12px;
+    color:var(--grey-text);
+  }
+  .search-box input{
+    background:transparent; border:none; outline:none; color:var(--white);
+    font-size:13px; width:100%;
+  }
+  .search-box input::placeholder{ color:var(--grey-text); }
+  .topbar-spacer{ flex:1; }
+  .net-status{
+    display:flex; align-items:center; gap:8px; font-size:12px; color:var(--grey-text);
+    background:rgba(255,255,255,0.03); border:1px solid var(--card-border);
+    padding:7px 12px; border-radius:10px;
+  }
+  .net-status .led{ width:7px; height:7px; border-radius:50%; background:var(--emerald-bright); box-shadow:0 0 6px var(--emerald-bright); animation:pulseGlow 1.6s ease-in-out infinite; }
+  .net-status b{ color:var(--white); font-weight:600; }
+  .portfolio{
+    text-align:right; padding-left:18px; border-left:1px solid var(--card-border);
+  }
+  .portfolio .amt{ font-size:15px; font-weight:600; }
+  .portfolio .delta{ font-size:11px; color:var(--emerald-bright); }
+  .portfolio .delta.down{ color:var(--danger); }
+
+  /* ---------- Main column ---------- */
+  .main{
+    grid-area:main; padding:22px 22px 40px 22px; overflow-y:auto;
+    display:flex; flex-direction:column; gap:18px;
+  }
+  .main-head{ display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+  .main-head h1{ font-size:19px; margin:0; font-weight:600; letter-spacing:-0.2px; }
+  .main-head p{ margin:2px 0 0; font-size:12.5px; color:var(--grey-text); }
+
+  .filter-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .filter-chip{
+    border:1px solid var(--card-border); background:rgba(255,255,255,0.03);
+    color:var(--grey-text); padding:7px 14px; border-radius:20px; font-size:12.5px;
+    transition:all .15s ease;
+  }
+  .filter-chip:hover{ color:var(--white); border-color:rgba(255,255,255,0.2); }
+  .filter-chip.active{
+    background:linear-gradient(135deg,rgba(31,184,102,0.22),rgba(31,160,160,0.18));
+    border-color:rgba(31,184,102,0.55); color:var(--white);
+    box-shadow:0 0 16px rgba(31,184,102,0.18);
+  }
+
+  .cards-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px,1fr)); gap:16px; }
+  @media (max-width:480px){
+    .cards-grid{ grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); }
+  }
+
+  /* ---------- Glass card base ---------- */
+  .glass{
+    background:var(--card-bg);
+    border:1px solid var(--card-border);
+    border-radius:16px;
+    backdrop-filter:blur(16px);
+    box-shadow:0 8px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+    position:relative;
+    overflow:hidden;
+  }
+
+  /* ---------- Endpoint card ---------- */
+  .ep-card{ display:flex; flex-direction:column; transition:transform .18s ease, box-shadow .18s ease; cursor:pointer; }
+  .ep-card:hover{ transform:translateY(-2px); box-shadow:0 14px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05); }
+  .ep-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px; border-bottom:1px solid var(--card-border);
+  }
+  .ep-name{ font-family:var(--mono); font-size:13.5px; font-weight:600; color:var(--white); display:flex; align-items:center; gap:8px;}
+  .copy-btn{
+    background:rgba(255,255,255,0.05); border:1px solid var(--card-border); color:var(--grey-text);
+    font-size:11px; padding:4px 9px; border-radius:7px; display:flex; align-items:center; gap:5px;
+    transition:all .15s ease;
+  }
+  .copy-btn:hover{ color:var(--white); border-color:rgba(255,255,255,0.25); }
+  .copy-btn.copied{ color:var(--emerald-bright); border-color:rgba(31,184,102,0.5); }
+  .status-badge{ font-size:11px; display:flex; align-items:center; gap:6px; font-weight:600; white-space:nowrap; }
+  .status-dot{ width:7px; height:7px; border-radius:50%; display:inline-block; }
+  .status-LIVE .status-dot{ background:var(--emerald-bright); box-shadow:0 0 8px var(--emerald-bright); animation:pulseGlow 2s ease-in-out infinite; }
+  .status-LIVE{ color:var(--emerald-bright); }
+  .status-DEGRADED .status-dot{ background:var(--amber); box-shadow:0 0 8px var(--amber); animation:pulseGlow .9s ease-in-out infinite; }
+  .status-DEGRADED{ color:var(--amber); }
+  .status-MAINTENANCE .status-dot{ background:var(--grey-static); }
+  .status-MAINTENANCE{ color:var(--grey-static); }
+  .status-SURGE .status-dot{ background:var(--teal); box-shadow:0 0 10px var(--teal); animation:flash .5s ease-in-out infinite; }
+  .status-SURGE{ color:var(--teal); }
+  @keyframes flash{ 0%,100%{opacity:1;} 50%{opacity:0.25;} }
+
+  .ep-body{ padding:14px 16px; display:flex; flex-direction:column; gap:10px; flex:1; }
+  .ep-desc{ font-size:12.5px; color:var(--grey-text); line-height:1.5; }
+  .chain-row{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chain-pill{
+    font-size:10.5px; font-family:var(--mono); padding:3px 8px; border-radius:6px;
+    background:rgba(255,255,255,0.05); border:1px solid var(--card-border); color:var(--grey-text);
+  }
+  .chain-pill.more{ color:var(--teal); border-color:rgba(31,160,160,0.4); }
+
+  .payload-box{
+    background:rgba(0,0,0,0.35); border:1px solid var(--card-border); border-radius:9px;
+    padding:9px 11px; font-family:var(--mono); font-size:11px; color:#8FE3B0;
+    max-height:120px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+    position:relative;
+  }
+  .payload-box .loading-tag{ color:var(--gold); }
+  .payload-source{ font-size:9.5px; color:var(--grey-static); margin-top:4px; letter-spacing:0.4px; text-transform:uppercase; }
+
+  .ep-foot{
+    border-top:1px solid var(--card-border); padding:12px 16px; display:flex; flex-direction:column; gap:8px;
+  }
+  .ep-foot-row{ display:flex; align-items:center; gap:12px; }
+  .ep-cost{ font-size:13px; font-weight:600; color:var(--white); white-space:nowrap; }
+  .ep-cost span{ color:var(--grey-text); font-weight:400; font-size:11px; }
+  .cap-bar-wrap{ flex:1; display:flex; align-items:center; gap:8px; }
+  .cap-bar{ flex:1; height:6px; border-radius:4px; background:rgba(255,255,255,0.08); overflow:hidden; }
+  .cap-fill{ height:100%; border-radius:4px; transition:width .6s cubic-bezier(.4,0,.2,1); background:linear-gradient(90deg,var(--emerald),var(--teal)); }
+  .cap-pct{ font-size:11px; color:var(--grey-text); width:32px; text-align:right; }
+  .req-count{ font-size:11px; color:var(--grey-text); text-align:right; min-width:96px; }
+  .req-count b{ color:var(--white); font-family:var(--mono); display:block; font-size:12.5px; }
+
+  /* ---------- Right panel ---------- */
+  .right-panel{ grid-area:panel; padding:22px 18px 30px 0; display:flex; flex-direction:column; gap:16px; overflow-y:auto; }
+  .panel-card{ padding:16px 17px; }
+  .panel-title{ font-size:11.5px; color:var(--grey-text); text-transform:uppercase; letter-spacing:0.6px; display:flex; align-items:center; gap:6px; margin-bottom:6px;}
+  .panel-main{ font-size:25px; font-weight:700; letter-spacing:-0.4px; }
+  .panel-sub{ font-size:12px; color:var(--emerald-bright); margin-top:2px; }
+  .panel-sub.neutral{ color:var(--grey-text); }
+
+  .ledger{ margin-top:12px; display:flex; flex-direction:column; gap:6px; max-height:150px; overflow:hidden; }
+  .ledger-row{
+    display:flex; align-items:center; justify-content:space-between; font-size:11px;
+    background:rgba(255,255,255,0.03); border:1px solid var(--card-border); border-radius:8px;
+    padding:7px 9px; animation:slideIn .4s ease;
+  }
+  @keyframes slideIn{ from{ opacity:0; transform:translateY(-8px); } to{ opacity:1; transform:translateY(0); } }
+  .ledger-row.fading{ animation:fadeOut .4s ease forwards; }
+  @keyframes fadeOut{ to{ opacity:0; transform:translateY(6px); } }
+  .ledger-agent{ color:var(--white); font-family:var(--mono); }
+  .ledger-route{ color:var(--grey-text); }
+  .ledger-amt{ color:var(--gold); font-family:var(--mono); }
+
+  .stat-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+  .stat-mini{ background:rgba(255,255,255,0.03); border:1px solid var(--card-border); border-radius:9px; padding:9px 10px; }
+  .stat-mini .v{ font-size:15px; font-weight:600; }
+  .stat-mini .l{ font-size:10px; color:var(--grey-text); margin-top:1px; }
+
+  .add-endpoint-btn{
+    margin-top:12px; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+    border:1.5px dashed rgba(255,255,255,0.18); background:rgba(255,255,255,0.02);
+    color:var(--grey-text); padding:11px; border-radius:11px; font-size:12.5px; font-weight:500;
+    transition:all .15s ease;
+  }
+  .add-endpoint-btn:hover{ color:var(--white); border-color:rgba(31,184,102,0.5); background:rgba(31,184,102,0.06); }
+
+  .chart-wrap{ height:170px; margin-top:8px; }
+  .chart-legend{ display:flex; gap:14px; font-size:10.5px; color:var(--grey-text); margin-top:8px;}
+  .chart-legend span{ display:flex; align-items:center; gap:5px; }
+  .leg-dot{ width:8px; height:8px; border-radius:50%; }
+
+  .settings-row{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .settings-row label{ font-size:10.5px; color:var(--grey-text); text-transform:uppercase; letter-spacing:0.5px; }
+  .settings-row input{
+    background:rgba(0,0,0,0.3); border:1px solid var(--card-border); color:var(--white);
+    padding:8px 10px; border-radius:8px; font-size:12px; font-family:var(--mono); outline:none;
+  }
+  .settings-row input:focus{ border-color:rgba(31,184,102,0.5); }
+  .settings-hint{ font-size:10.5px; color:var(--grey-static); line-height:1.4; }
+  .save-btn{
+    background:linear-gradient(135deg,var(--emerald),var(--teal)); color:white; border:none;
+    padding:9px 14px; border-radius:9px; font-size:12.5px; font-weight:600; margin-top:4px;
+  }
+  .key-status{ font-size:11px; margin-top:4px; }
+  .key-status.live{ color:var(--emerald-bright); }
+  .key-status.mock{ color:var(--grey-text); }
+
+  /* generic page (logs/analytics/billing/settings) */
+  .page-card{ padding:18px; }
+  .log-table{ width:100%; border-collapse:collapse; font-size:12px; }
+  .log-table th{ text-align:left; color:var(--grey-text); font-weight:500; padding:8px 10px; border-bottom:1px solid var(--card-border); text-transform:uppercase; font-size:10.5px; letter-spacing:0.4px; }
+  .log-table td{ padding:9px 10px; border-bottom:1px solid rgba(255,255,255,0.05); font-family:var(--mono); }
+  .log-row-enter{ animation:slideIn .4s ease; }
+  .pill-ok{ color:var(--emerald-bright); }
+  .pill-fail{ color:var(--danger); }
+
+  .empty-hint{ color:var(--grey-text); font-size:12.5px; padding:30px; text-align:center; }
+
+  @media (max-width:760px){
+    .topbar .portfolio{ display:none; }
+    .search-box{ max-width:none; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+/* =========================================================================
+   ARCHITECTURE NOTES (read me first)
+   -------------------------------------------------------------------------
+   This file is a static, client-rendered console. It is designed to be
+   dropped on Vercel with zero build step.
+
+   SECURITY NOTE ON THE API KEY
+   -------------------------------------------------------------------------
+   GoldRush/Covalent keys are billable secrets. A static HTML file shipped
+   to the browser exposes anything hardcoded in it to every visitor via
+   "View Source" — so no real key is embedded here. Instead:
+     - The Settings panel lets you paste a key at runtime (kept in memory
+       only, never persisted, never logged).
+     - If present, the app calls the real GoldRush API directly from the
+       browser (see GOLDRUSH_FETCH below).
+     - If absent, the app falls back to realistic simulated payloads so
+       the whole console is fully functional out of the box.
+   For a real production deployment, the recommended pattern is a thin
+   serverless proxy (Vercel Function) that holds the key server-side and
+   forwards requests — drop that in and swap GOLDRUSH_FETCH's URL.
+
+   WHERE GOLDRUSH (DATA) PLUGS IN
+   -------------------------------------------------------------------------
+   -> GOLDRUSH_FETCH(chain, address)   — real Covalent/GoldRush balances_v2 call
+   -> mockGoldRushPayload(chain)        — fallback simulated payload
+   -> EndpointCard's `runQuery()`       — triggers fetch on click / poll tick
+
+   WHERE x402 (BILLING) PLUGS IN
+   -------------------------------------------------------------------------
+   -> simulateX402Payment()             — represents the HTTP 402 challenge/
+                                           pay/retry cycle an agent performs
+                                           per request. In production this
+                                           is where your x402 middleware
+                                           verifies a USDC payment header
+                                           before the GoldRush call resolves.
+   -> ledger state in <App/>            — running feed of settled x402 payments
+   -> revenue totals in RevenueWidget   — aggregated x402 settlement totals
+   ========================================================================= */
+
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+const h = React.createElement;
+
+/* ---------------------------- Constants ---------------------------- */
+
+const CHAINS_ALL = ["ETH","BASE","ARB","SOL","BNB","OP","AVAX","MATIC","FTM","TRX"];
+
+const ENDPOINT_DEFS = [
+  {
+    id:"wallet-intelligence",
+    path:"/wallet-intelligence",
+    desc:"Returns full wallet history, token balances, and transaction flows across 100+ chains. Resolves in <200ms. Paid per request via x402.",
+    chains:["ETH","BASE","ARB","SOL","BNB"], moreChains:96,
+    cost:0.001, capacity:84, reqs:2847293, tag:"High Traffic",
+    family:["EVM","Solana"], status:"LIVE",
+    samplePayload:{ wallet:"0x...", chains:["eth"] },
+    goldrushChain:"eth-mainnet"
+  },
+  {
+    id:"token-snapshot",
+    path:"/token-snapshot",
+    desc:"Real-time token balance snapshot for any address across EVM and Solana. Includes spot prices and 24h price deltas.",
+    chains:["ETH","BASE","SOL","ARB"], moreChains:0,
+    cost:0.0005, capacity:61, reqs:1203847, tag:"High Traffic",
+    family:["EVM","Solana"], status:"LIVE",
+    samplePayload:{ wallet:"0x...", chain:"eth" },
+    goldrushChain:"eth-mainnet"
+  },
+  {
+    id:"cross-chain-balance",
+    path:"/cross-chain-balance",
+    desc:"Aggregated native + token balances for a single wallet across 100+ chains in one call, normalized to USD.",
+    chains:["ETH","BASE","ARB","SOL","BNB","OP"], moreChains:94,
+    cost:0.0008, capacity:43, reqs:987441, tag:"",
+    family:["EVM","Solana"], status:"DEGRADED",
+    samplePayload:{ wallet:"0x...", chains:["eth","base","arbitrum"] },
+    goldrushChain:"base-mainnet"
+  },
+  {
+    id:"transaction-flow",
+    path:"/transaction-flow",
+    desc:"Decoded inbound/outbound transaction graph for a wallet, with counterparties and protocol labels. EVM focused.",
+    chains:["ETH","BASE","ARB","OP","BNB"], moreChains:0,
+    cost:0.002, capacity:29, reqs:445102, tag:"New",
+    family:["EVM"], status:"SURGE",
+    samplePayload:{ wallet:"0x...", chain:"eth", limit:50 },
+    goldrushChain:"eth-mainnet"
+  },
+  {
+    id:"nft-portfolio",
+    path:"/nft-portfolio",
+    desc:"NFT holdings with floor price, collection metadata, and media URIs for a wallet across ETH, Base, and Solana.",
+    chains:["ETH","BASE","SOL"], moreChains:0,
+    cost:0.0005, capacity:17, reqs:203918, tag:"New",
+    family:["EVM","Solana"], status:"LIVE",
+    samplePayload:{ wallet:"0x...", chain:"eth" },
+    goldrushChain:"eth-mainnet"
+  }
+];
+
+const SAMPLE_WALLET = "vitalik.eth";
+const SAMPLE_WALLET_RESOLVED = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+const AGENT_NAMES = ["Agent_77","Agent_12","Agent_204","Agent_9","Agent_311","Agent_58","Agent_140","Agent_3"];
+
+// -----------------------------------------------------------------------
+// GOLDRUSH ACCESS — via the /api/goldrush serverless proxy
+// -----------------------------------------------------------------------
+// There is no API key anywhere in this file anymore. The real key lives
+// server-side, as a Vercel environment variable, read by /api/goldrush.js
+// (shipped alongside this HTML file). This page only ever talks to that
+// same-origin proxy — it never sees, sends, or stores the secret.
+//
+// If the proxy isn't deployed (e.g. you're just opening this HTML file
+// directly, or GOLDRUSH_API_KEY isn't set yet on Vercel), the fetch below
+// fails harmlessly and the dashboard falls back to simulated data — see
+// mockGoldRushPayload(). Nothing breaks either way.
+const GOLDRUSH_PROXY_URL = "/api/goldrush";
+
+/* ---------------------------- Helpers ---------------------------- */
+
+function fmtUSD(n, decimals){
+  return "$" + n.toLocaleString(undefined, { minimumFractionDigits: decimals===undefined?2:decimals, maximumFractionDigits: decimals===undefined?2:decimals });
+}
+function fmtInt(n){ return n.toLocaleString(); }
+function truncate(addr){ return addr.slice(0,6) + "…" + addr.slice(-4); }
+function jitter(base, pct){ return base + (Math.random()-0.5)*2*base*pct; }
+
+/* =========================================================================
+   GOLDRUSH DATA LAYER
+   ========================================================================= */
+
+// Simulated fallback payload — used whenever the serverless proxy isn't
+// reachable (no backend deployed yet, or GOLDRUSH_API_KEY not set on
+// Vercel). Shaped to exactly match what /api/goldrush returns for real,
+// including realistic human-readable balances (not raw base units).
+function mockGoldRushPayload(chain){
+  const tokens = ["ETH","USDC","WBTC","LDO","ARB","UNI"];
+  const items = tokens.slice(0, 2 + Math.floor(Math.random()*3)).map(sym => ({
+    symbol: sym,
+    balance: +(Math.random()*5).toFixed(4),
+    quote: +(Math.random()*9000).toFixed(2)
+  }));
+  return {
+    address: SAMPLE_WALLET_RESOLVED,
+    chain,
+    items,
+    source: "simulated"
+  };
+}
+
+// Calls the same-origin serverless proxy (see /api/goldrush.js). The
+// proxy holds the real GoldRush API key server-side and already returns
+// balances converted to human-readable token amounts.
+async function GOLDRUSH_FETCH(chain){
+  const res = await fetch(`${GOLDRUSH_PROXY_URL}?chain=${encodeURIComponent(chain)}&wallet=${encodeURIComponent(SAMPLE_WALLET)}`);
+  const json = await res.json();
+  if(!res.ok || json.error) throw new Error(json.error || ("Proxy request failed: " + res.status));
+  return json; // { address, chain, items, source: "live" }
+}
+
+// -----------------------------------------------------------------------
+// x402 BILLING LAYER (simulated)
+// In production, an inbound agent request to one of these endpoints would:
+//   1. Receive HTTP 402 Payment Required with a payment challenge
+//   2. Agent signs/sends a USDC micro-payment (x402 protocol)
+//   3. Middleware verifies settlement on-chain / via facilitator
+//   4. Request is replayed and GoldRush data is returned
+// This function stands in for that round trip so the UI has something
+// real to animate against.
+function simulateX402Payment(endpoint){
+  return {
+    agent: AGENT_NAMES[Math.floor(Math.random()*AGENT_NAMES.length)],
+    route: endpoint.path,
+    amount: endpoint.cost,
+    ts: Date.now()
+  };
+}
+
+/* =========================================================================
+   SMALL UI PRIMITIVES
+   ========================================================================= */
+
+function Icon({ name, size, style, className }){
+  // lucide's UMD build exposes window.lucide.createIcons(), which scans the
+  // DOM for elements with a [data-lucide] attribute and replaces them with
+  // inline SVGs. We re-run that scan after every render (see App's effect),
+  // so this component just needs to render the placeholder tag.
+  return h("i", { "data-lucide": name, style: Object.assign({ width:size||16, height:size||16, display:"inline-block" }, style||{}), className });
+}
+
+function StatusBadge({ status }){
+  const sym = { LIVE:"●", DEGRADED:"◐", MAINTENANCE:"○", SURGE:"⚡" }[status] || "●";
+  return h("span", { className: "status-badge status-" + status },
+    h("span", { className:"status-dot" }), sym + " " + status
+  );
+}
+
+/* =========================================================================
+   ENDPOINT CARD
+   ========================================================================= */
+
+function EndpointCard({ ep, onPayment, pollTick }){
+  const [copied, setCopied] = useState(false);
+  const [payload, setPayload] = useState(ep.samplePayload);
+  const [source, setSource] = useState("static");
+  const [loading, setLoading] = useState(false);
+  const [capacity, setCapacity] = useState(ep.capacity);
+  const [reqs, setReqs] = useState(ep.reqs);
+  const [status, setStatus] = useState(ep.status);
+  const mounted = useRef(true);
+
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+  const runQuery = useCallback(async () => {
+    setLoading(true);
+    try{
+      // ---- GoldRush data path, via the same-origin serverless proxy ----
+      // Falls back to simulated data automatically if the proxy 404s
+      // (no backend deployed) or 500s (key not configured yet).
+      let result;
+      try{
+        result = await GOLDRUSH_FETCH(ep.goldrushChain);
+      }catch(proxyErr){
+        await new Promise(r => setTimeout(r, 250 + Math.random()*250));
+        result = mockGoldRushPayload(ep.goldrushChain);
+      }
+      if(!mounted.current) return;
+      setPayload(result);
+      setSource(result.source);
+      // x402 middleware would have already gated the above call;
+      // here we just record the settled payment for the ledger.
+      onPayment(simulateX402Payment(ep));
+    }finally{
+      if(mounted.current) setLoading(false);
+    }
+  }, [ep]);
+
+  // light metric drift on every poll tick, independent of the query above
+  useEffect(() => {
+    setCapacity(c => {
+      const next = Math.max(4, Math.min(99, jitter(c, 0.04)));
+      return Math.round(next);
+    });
+    setReqs(r => r + Math.floor(Math.random()*900));
+    if(Math.random() < 0.04){
+      setStatus(s => {
+        const pool = ["LIVE","LIVE","LIVE","DEGRADED","SURGE"];
+        return pool[Math.floor(Math.random()*pool.length)];
+      });
+    }
+  }, [pollTick]);
+
+  // Fire the first GoldRush query the instant this card mounts, so the
+  // dashboard is already live the moment the page finishes loading —
+  // clicking the card re-runs the query on demand after that.
+  useEffect(() => {
+    runQuery();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleCopy(e){
+    e.stopPropagation();
+    const full = "https://api.pulsewire.dev" + ep.path;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(full).catch(()=>{});
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  const visibleChains = ep.chains;
+
+  return h("div", { className:"glass ep-card", onClick: runQuery },
+    h("div", { className:"ep-head" },
+      h("div", { className:"ep-name" }, ep.path),
+      h("div", { style:{ display:"flex", alignItems:"center", gap:10 } },
+        h("button", { className:"copy-btn" + (copied?" copied":""), onClick:handleCopy },
+          h(Icon, { name: copied?"check":"copy", size:12 }),
+          copied ? "Copied!" : "Copy URI"
+        ),
+        h(StatusBadge, { status })
+      )
+    ),
+    h("div", { className:"ep-body" },
+      h("div", { className:"ep-desc" }, ep.desc),
+      h("div", { className:"chain-row" },
+        visibleChains.map(c => h("span", { key:c, className:"chain-pill" }, c)),
+        ep.moreChains ? h("span", { className:"chain-pill more" }, "+" + ep.moreChains + " more") : null
+      ),
+      h("div", null,
+        h("div", { className:"payload-box" },
+          loading ? h("span", { className:"loading-tag" }, "// querying " + SAMPLE_WALLET + " on " + ep.goldrushChain + " …") :
+            JSON.stringify(payload, null, 2)
+        ),
+        h("div", { className:"payload-source" }, "source: " + source)
+      )
+    ),
+    h("div", { className:"ep-foot" },
+      h("div", { className:"ep-foot-row" },
+        h("div", { className:"ep-cost" }, fmtUSD(ep.cost, 4) + " ", h("span", null, "USDC")),
+        h("div", { className:"cap-bar-wrap" },
+          h("div", { className:"cap-bar" }, h("div", { className:"cap-fill", style:{ width: capacity + "%" } })),
+          h("div", { className:"cap-pct" }, capacity + "%")
+        ),
+        h("div", { className:"req-count" }, h("b", null, fmtInt(reqs)), "24h requests")
+      )
+    )
+  );
+}
+
+/* =========================================================================
+   RIGHT PANEL WIDGETS
+   ========================================================================= */
+
+function RevenueWidget({ ledger, revenue, revenueDelta }){
+  return h("div", { className:"glass panel-card" },
+    h("div", { className:"panel-title" }, h(Icon, { name:"banknote", size:13 }), "Total Revenue via x402"),
+    h("div", { className:"panel-main" }, fmtUSD(revenue)),
+    h("div", { className:"panel-sub" }, "▲ " + revenueDelta.toFixed(1) + "% 24h"),
+    h("div", { className:"ledger" },
+      ledger.slice(0,3).map(entry => h("div", { key: entry.id, className:"ledger-row" + (entry.fading?" fading":"") },
+        h("span", { className:"ledger-agent" }, entry.agent),
+        h("span", { className:"ledger-route" }, entry.route),
+        h("span", { className:"ledger-amt" }, fmtUSD(entry.amount, 4) + " USDC")
+      ))
+    )
+  );
+}
+
+function ThroughputWidget({ latency, p95, bandwidth, onAddEndpoint }){
+  return h("div", { className:"glass panel-card" },
+    h("div", { className:"panel-title" }, h(Icon, { name:"activity", size:13 }), "System Throughput & Latency"),
+    h("div", { className:"panel-main" }, Math.round(latency) + "ms"),
+    h("div", { className:"panel-sub neutral" }, "Avg latency"),
+    h("div", { className:"stat-grid" },
+      h("div", { className:"stat-mini" }, h("div", { className:"v" }, Math.round(p95) + "ms"), h("div", { className:"l" }, "P95 latency")),
+      h("div", { className:"stat-mini" }, h("div", { className:"v" }, bandwidth.toFixed(2) + " TB"), h("div", { className:"l" }, "Bandwidth served"))
+    ),
+    h("button", { className:"add-endpoint-btn", onClick:onAddEndpoint },
+      h(Icon, { name:"plus", size:14 }), "Add Custom Endpoint"
+    )
+  );
+}
+
+function ActivityChart({ series }){
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+
+  useEffect(() => {
+    const ctx = canvasRef.current.getContext("2d");
+    chartRef.current = new Chart(ctx, {
+      type:"line",
+      data:{
+        labels: series.labels,
+        datasets:[
+          {
+            label:"Agent requests/sec",
+            data: series.requests,
+            borderColor:"#1FB866",
+            backgroundColor: ctx.createLinearGradient(0,0,0,170),
+            borderWidth:2,
+            tension:0.4,
+            pointRadius:0,
+            fill:true
+          },
+          {
+            label:"USDC micro-payments/sec",
+            data: series.payments,
+            borderColor:"#E0B25C",
+            backgroundColor:"rgba(224,178,92,0.05)",
+            borderWidth:2,
+            tension:0.4,
+            pointRadius:0,
+            fill:true,
+            yAxisID:"y1"
+          }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        animation:{ duration:400 },
+        interaction:{ intersect:false, mode:"index" },
+        plugins:{ legend:{ display:false }, tooltip:{
+          backgroundColor:"#141A26", borderColor:"rgba(255,255,255,0.1)", borderWidth:1,
+          titleColor:"#A6A6A6", bodyColor:"#F4F6F8", padding:8, displayColors:false
+        }},
+        scales:{
+          x:{ grid:{ display:false }, ticks:{ color:"#6B7280", font:{ size:9 }, maxTicksLimit:6 }, border:{ display:false } },
+          y:{ display:false },
+          y1:{ display:false, position:"right" }
+        }
+      }
+    });
+    const grad1 = ctx.createLinearGradient(0,0,0,170);
+    grad1.addColorStop(0,"rgba(31,184,102,0.30)");
+    grad1.addColorStop(1,"rgba(31,184,102,0)");
+    chartRef.current.data.datasets[0].backgroundColor = grad1;
+    const grad2 = ctx.createLinearGradient(0,0,0,170);
+    grad2.addColorStop(0,"rgba(224,178,92,0.22)");
+    grad2.addColorStop(1,"rgba(224,178,92,0)");
+    chartRef.current.data.datasets[1].backgroundColor = grad2;
+    chartRef.current.update();
+    return () => chartRef.current && chartRef.current.destroy();
+  }, []);
+
+  useEffect(() => {
+    if(!chartRef.current) return;
+    const c = chartRef.current;
+    c.data.labels = series.labels;
+    c.data.datasets[0].data = series.requests;
+    c.data.datasets[1].data = series.payments;
+    c.update();
+  }, [series]);
+
+  return h("div", null,
+    h("div", { className:"chart-wrap" }, h("canvas", { ref:canvasRef })),
+    h("div", { className:"chart-legend" },
+      h("span", null, h("span", { className:"leg-dot", style:{ background:"#1FB866" } }), "Agent requests/sec"),
+      h("span", null, h("span", { className:"leg-dot", style:{ background:"#E0B25C" } }), "USDC payments/sec")
+    )
+  );
+}
+
+function DataSourceWidget(){
+  // Pings the proxy once (cheap discovery call) just to report status —
+  // doesn't drive any card data itself, the cards each fetch independently.
+  const [state, setState] = useState("checking"); // checking | live | mock
+  const [detail, setDetail] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    GOLDRUSH_FETCH("eth-mainnet")
+      .then(() => { if(!cancelled){ setState("live"); } })
+      .catch(err => { if(!cancelled){ setState("mock"); setDetail(err.message); } });
+    return () => { cancelled = true; };
+  }, []);
+
+  return h("div", { className:"glass panel-card" },
+    h("div", { className:"panel-title" }, h(Icon, { name:"server-cog", size:13 }), "Data Source"),
+    state === "checking" ? h("div", { className:"key-status mock" }, "● Checking /api/goldrush…") :
+    state === "live" ? h("div", { className:"key-status live" }, "● Live GoldRush data via secure proxy") :
+    h("div", { className:"key-status mock" }, "● Running on simulated data"),
+    h("div", { className:"settings-hint", style:{ marginTop:6 } },
+      state === "mock"
+        ? "The /api/goldrush proxy isn't reachable yet (" + (detail || "no backend deployed") + "). Deploy api/goldrush.js alongside this file and set GOLDRUSH_API_KEY in Vercel's Environment Variables to go live — no key is ever stored in the browser."
+        : "Requests for vitalik.eth are flowing through /api/goldrush, which holds the real GoldRush key server-side as an environment variable."
+    )
+  );
+}
+
+/* =========================================================================
+   TOP-LEVEL LAYOUT PIECES
+   ========================================================================= */
+
+const NAV_ITEMS = [
+  { id:"overview", icon:"layout-dashboard", label:"Dashboard" },
+  { id:"endpoints", icon:"plug-zap", label:"Endpoints Directory" },
+  { id:"logs", icon:"scroll-text", label:"API Logs" },
+  { id:"analytics", icon:"bar-chart-3", label:"Analytics" },
+  { id:"billing", icon:"wallet", label:"Billing & x402 Wallets" },
+  { id:"settings", icon:"settings", label:"Settings / Docs" }
+];
+
+function Sidebar({ page, setPage, wallet }){
+  return h("div", { className:"rail" },
+    h("div", { className:"rail-logo" }, h(Icon, { name:"radio-tower", size:18, style:{ color:"#fff" } })),
+    h("div", { className:"rail-nav" },
+      NAV_ITEMS.map(item => h("button", {
+        key:item.id,
+        className:"rail-item" + (page===item.id?" active":""),
+        onClick:()=>setPage(item.id)
+      },
+        h(Icon, { name:item.icon, size:19 }),
+        h("span", { className:"rail-tooltip" }, item.label)
+      ))
+    ),
+    h("div", { className:"rail-wallet" },
+      h("div", { className:"wallet-orb" },
+        h(Icon, { name:"wallet-minimal", size:16, style:{ color:"#1FB866" } }),
+        h("div", { className:"pulse" })
+      ),
+      h("div", { className:"wallet-meta" },
+        h("div", { className:"wallet-addr" }, truncate(wallet.address)),
+        h("div", { className:"wallet-bal" }, fmtUSD(wallet.balance,0))
+      )
+    )
+  );
+}
+
+function Topbar({ network, portfolio }){
+  return h("div", { className:"topbar" },
+    h("div", { className:"search-box" },
+      h(Icon, { name:"search", size:15 }),
+      h("input", { placeholder:"Search endpoints, chains, market IDs…" })
+    ),
+    h("div", { className:"topbar-spacer" }),
+    h("div", { className:"net-status" },
+      h("span", { className:"led" }),
+      "HyperCore ", h("b", null, "~" + network.ordPerSec + "k ord/sec")
+    ),
+    h("div", { className:"portfolio" },
+      h("div", { className:"amt" }, fmtUSD(portfolio.balance)),
+      h("div", { className:"delta" + (portfolio.delta<0?" down":"") }, (portfolio.delta>=0?"▲ ":"▼ ") + Math.abs(portfolio.delta).toFixed(2) + "% 24h")
+    )
+  );
+}
+
+const FILTERS = ["All","EVM","Solana","High Traffic","New"];
+
+function EndpointsPage({ onPayment, pollTick, onAddEndpoint }){
+  const [filter, setFilter] = useState("All");
+
+  const filtered = ENDPOINT_DEFS.filter(ep => {
+    if(filter==="All") return true;
+    if(filter==="EVM") return ep.family.includes("EVM");
+    if(filter==="Solana") return ep.family.includes("Solana");
+    if(filter==="High Traffic") return ep.tag==="High Traffic";
+    if(filter==="New") return ep.tag==="New";
+    return true;
+  });
+
+  return h(React.Fragment, null,
+    h("div", { className:"main-head" },
+      h("div", null,
+        h("h1", null, "Endpoints Directory"),
+        h("p", null, "Live GoldRush-backed data routes, billed per-request via x402.")
+      ),
+      h("button", { className:"add-endpoint-btn", style:{ width:"auto", padding:"9px 16px" }, onClick:onAddEndpoint },
+        h(Icon, { name:"plus", size:14 }), "Add Custom Endpoint"
+      )
+    ),
+    h("div", { className:"filter-row" },
+      FILTERS.map(f => h("button", {
+        key:f, className:"filter-chip" + (filter===f?" active":""), onClick:()=>setFilter(f)
+      }, f))
+    ),
+    h("div", { className:"cards-grid" },
+      filtered.map(ep => h(EndpointCard, { key:ep.id, ep, onPayment, pollTick }))
+    )
+  );
+}
+
+function LogsPage({ logs }){
+  return h("div", { className:"glass page-card" },
+    h("div", { className:"main-head", style:{ marginBottom:14 } },
+      h("div", null, h("h1", null, "API Logs"), h("p", null, "Real-time agent request ledger — no human in the loop.")),
+    ),
+    h("table", { className:"log-table" },
+      h("thead", null, h("tr", null,
+        h("th", null, "Time"), h("th", null, "Agent"), h("th", null, "Route"),
+        h("th", null, "Chain"), h("th", null, "Status"), h("th", null, "x402 Amount")
+      )),
+      h("tbody", null,
+        logs.length === 0 ? h("tr", null, h("td", { colSpan:6, className:"empty-hint" }, "Waiting for agent traffic…")) :
+        logs.map(l => h("tr", { key:l.id, className:"log-row-enter" },
+          h("td", null, new Date(l.ts).toLocaleTimeString()),
+          h("td", null, l.agent),
+          h("td", null, l.route),
+          h("td", null, l.chain),
+          h("td", { className: l.ok ? "pill-ok":"pill-fail" }, l.ok ? "200 OK" : "402 → settled"),
+          h("td", null, fmtUSD(l.amount,4) + " USDC")
+        ))
+      )
+    )
+  );
+}
+
+function AnalyticsPage({ series, revenue, ledger }){
+  return h("div", { className:"glass page-card" },
+    h("div", { className:"main-head", style:{ marginBottom:14 } },
+      h("div", null, h("h1", null, "Analytics"), h("p", null, "Revenue and volume deep dive across all endpoints."))
+    ),
+    h("div", { className:"stat-grid", style:{ gridTemplateColumns:"repeat(4,1fr)", marginBottom:18 } },
+      h("div", { className:"stat-mini" }, h("div", { className:"v" }, fmtUSD(revenue)), h("div", { className:"l" }, "Total x402 revenue")),
+      h("div", { className:"stat-mini" }, h("div", { className:"v" }, fmtInt(ENDPOINT_DEFS.reduce((a,e)=>a+e.reqs,0))), h("div", { className:"l" }, "24h total requests")),
+      h("div", { className:"stat-mini" }, h("div", { className:"v" }, ledger.length), h("div", { className:"l" }, "Live ledger entries")),
+      h("div", { className:"stat-mini" }, h("div", { className:"v" }, "5"), h("div", { className:"l" }, "Active endpoints"))
+    ),
+    h(ActivityChart, { series }),
+    h("p", { className:"empty-hint" }, "Per-endpoint breakdowns, cohort analysis, and agent-level spend reports plug in here once a billing backend is connected.")
+  );
+}
+
+function BillingPage({ wallet }){
+  return h("div", { className:"glass page-card" },
+    h("div", { className:"main-head", style:{ marginBottom:14 } },
+      h("div", null, h("h1", null, "Billing & x402 Wallets"), h("p", null, "Payment configuration for the x402 micro-payment middleware."))
+    ),
+    h("div", { className:"stat-grid", style:{ gridTemplateColumns:"repeat(3,1fr)", marginBottom:14 } },
+      h("div", { className:"stat-mini" }, h("div", { className:"v" }, truncate(wallet.address)), h("div", { className:"l" }, "Receiving wallet")),
+      h("div", { className:"stat-mini" }, h("div", { className:"v" }, fmtUSD(wallet.balance,2)), h("div", { className:"l" }, "Live USDC balance")),
+      h("div", { className:"stat-mini" }, h("div", { className:"v" }, "Base · ETH"), h("div", { className:"l" }, "Settlement chains"))
+    ),
+    h("p", { className:"empty-hint" }, "Hook your x402 facilitator credentials and payout rails here. This panel currently reflects the mock wallet connection in the sidebar.")
+  );
+}
+
+function SettingsPage(){
+  return h("div", { className:"glass page-card" },
+    h("div", { className:"main-head", style:{ marginBottom:14 } },
+      h("div", null, h("h1", null, "Settings / Docs"), h("p", null, "Configure data sources and review integration notes."))
+    ),
+    h(DataSourceWidget),
+    h("p", { className:"empty-hint" }, "See inline code comments in this file and in /api/goldrush.js for the GoldRush data layer and x402 billing layer hand-off points.")
+  );
+}
+
+/* =========================================================================
+   APP ROOT
+   ========================================================================= */
+
+function App(){
+  const [page, setPage] = useState("overview");
+  const [pollTick, setPollTick] = useState(0);
+
+  const [wallet] = useState({ address:"0x4a3f9b2c8e7d1a6f5c3b9e0d2a8f7c1b4a3f1f", balance: 1284.92 });
+  const [portfolio, setPortfolio] = useState({ balance: 27306.27, delta: 3.8 });
+  const [network, setNetwork] = useState({ ordPerSec: 200 });
+
+  const [revenue, setRevenue] = useState(142508.41);
+  const [revenueDelta, setRevenueDelta] = useState(14.2);
+  const [latency, setLatency] = useState(184);
+  const [p95, setP95] = useState(312);
+  const [bandwidth, setBandwidth] = useState(4.2);
+
+  const [ledger, setLedger] = useState([
+    { id:1, agent:"Agent_77", route:"/wallet-intelligence", amount:0.001, ts:Date.now() },
+    { id:2, agent:"Agent_12", route:"/token-snapshot", amount:0.0005, ts:Date.now() },
+    { id:3, agent:"Agent_204", route:"/cross-chain-balance", amount:0.0008, ts:Date.now() }
+  ]);
+  const [logs, setLogs] = useState([]);
+  const idRef = useRef(4);
+
+  const [series, setSeries] = useState(() => {
+    const labels = [];
+    const requests = [];
+    const payments = [];
+    const now = new Date();
+    for(let i=19;i>=0;i--){
+      const t = new Date(now.getTime() - i*5000);
+      labels.push(t.toLocaleTimeString([], { minute:"2-digit", second:"2-digit" }));
+      requests.push(Math.round(jitter(820, 0.25)));
+      payments.push(Math.round(jitter(540, 0.3)));
+    }
+    return { labels, requests, payments };
+  });
+
+  // record an x402 settlement coming from an endpoint-card query
+  const onPayment = useCallback((entry) => {
+    const id = idRef.current++;
+    setLedger(prev => [{ id, ...entry }, ...prev].slice(0,3));
+    setLogs(prev => [{ id, agent:entry.agent, route:entry.route, chain:"eth-mainnet", ok:true, amount:entry.amount, ts:entry.ts }, ...prev].slice(0,40));
+    setRevenue(r => r + entry.amount * (1 + Math.random()*40));
+  }, []);
+
+  function handleAddEndpoint(){
+    alert("Custom endpoint creation hooks into your GoldRush route config + x402 price sheet — wire this button to your backend's endpoint-provisioning API.");
+  }
+
+  // global 5s polling heartbeat — drives metric drift + simulated agent traffic
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPollTick(t => t+1);
+
+      setNetwork({ ordPerSec: Math.round(jitter(200, 0.06)) });
+      setPortfolio(p => ({ balance: +(jitter(p.balance, 0.01)).toFixed(2), delta: jitter(p.delta, 0.15) }));
+      setLatency(l => Math.max(90, jitter(l, 0.08)));
+      setP95(v => Math.max(180, jitter(v, 0.06)));
+      setBandwidth(b => b + Math.random()*0.01);
+      setRevenueDelta(d => Math.max(0, jitter(d, 0.1)));
+
+      setSeries(s => {
+        const t = new Date();
+        const labels = [...s.labels.slice(1), t.toLocaleTimeString([], { minute:"2-digit", second:"2-digit" })];
+        const requests = [...s.requests.slice(1), Math.max(50, Math.round(jitter(s.requests[s.requests.length-1], 0.18)))];
+        const payments = [...s.payments.slice(1), Math.max(30, Math.round(jitter(s.payments[s.payments.length-1], 0.22)))];
+        return { labels, requests, payments };
+      });
+
+      // simulate ambient agent traffic on a random endpoint, independent of
+      // any card the user actually clicked — this is what keeps the ledger
+      // and logs feeling "live" even with no interaction.
+      if(Math.random() < 0.85){
+        const ep = ENDPOINT_DEFS[Math.floor(Math.random()*ENDPOINT_DEFS.length)];
+        onPayment(simulateX402Payment(ep));
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [onPayment]);
+
+  // fade-out animation flag for ledger rows beyond the visible 3
+  useEffect(() => {
+    if(ledger.length > 3){
+      const t = setTimeout(() => setLedger(l => l.slice(0,3)), 400);
+      return () => clearTimeout(t);
+    }
+  }, [ledger]);
+
+  useEffect(() => { if(window.lucide) window.lucide.createIcons(); }, [page, ledger, logs]);
+  useEffect(() => {
+    const id = setInterval(() => { if(window.lucide) window.lucide.createIcons(); }, 700);
+    return () => clearInterval(id);
+  }, []);
+
+  let body;
+  if(page==="overview"){
+    body = h(EndpointsPage, { onPayment, pollTick, onAddEndpoint:handleAddEndpoint });
+  }else if(page==="endpoints"){
+    body = h(EndpointsPage, { onPayment, pollTick, onAddEndpoint:handleAddEndpoint });
+  }else if(page==="logs"){
+    body = h(LogsPage, { logs });
+  }else if(page==="analytics"){
+    body = h(AnalyticsPage, { series, revenue, ledger });
+  }else if(page==="billing"){
+    body = h(BillingPage, { wallet });
+  }else{
+    body = h(SettingsPage);
+  }
+
+  return h("div", { className:"app-shell" },
+    h("div", { className:"aurora-layer" },
+      h("div", { className:"blob b1" }), h("div", { className:"blob b2" }), h("div", { className:"blob b3" })
+    ),
+    h(Sidebar, { page, setPage, wallet }),
+    h(Topbar, { network, portfolio }),
+    h("div", { className:"main" }, body),
+    h("div", { className:"right-panel" },
+      h(RevenueWidget, { ledger, revenue, revenueDelta }),
+      h(ThroughputWidget, { latency, p95, bandwidth, onAddEndpoint:handleAddEndpoint }),
+      h("div", { className:"glass panel-card" },
+        h("div", { className:"panel-title" }, h(Icon, { name:"trending-up", size:13 }), "Activity — Requests vs Payments"),
+        h(ActivityChart, { series })
+      ),
+      h(DataSourceWidget)
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+window.addEventListener("load", () => { if(window.lucide) window.lucide.createIcons(); });
+</script>
+</body>
+</html>
