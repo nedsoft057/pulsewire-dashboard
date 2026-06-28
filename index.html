@@ -446,7 +446,8 @@ const ENDPOINT_DEFS = [
     cost:0.001, capacity:84, reqs:2847293, tag:"High Traffic",
     family:["EVM","Solana"], status:"LIVE",
     samplePayload:{ wallet:"0x...", chains:["eth"] },
-    goldrushChain:"eth-mainnet"
+    goldrushChain:"eth-mainnet",
+    goldrushChains:["eth-mainnet","base-mainnet","arbitrum-mainnet"] // real multi-chain query
   },
   {
     id:"token-snapshot",
@@ -466,7 +467,8 @@ const ENDPOINT_DEFS = [
     cost:0.0008, capacity:43, reqs:987441, tag:"",
     family:["EVM","Solana"], status:"DEGRADED",
     samplePayload:{ wallet:"0x...", chains:["eth","base","arbitrum"] },
-    goldrushChain:"base-mainnet"
+    goldrushChain:"base-mainnet",
+    goldrushChains:["eth-mainnet","base-mainnet","arbitrum-mainnet","optimism-mainnet"] // real multi-chain query
   },
   {
     id:"transaction-flow",
@@ -540,6 +542,22 @@ function mockGoldRushPayload(chain){
   };
 }
 
+function mockGoldRushMultiChainPayload(chains){
+  const balances = chains.flatMap(chain => {
+    const single = mockGoldRushPayload(chain);
+    return single.items.map(it => ({ chain, symbol: it.symbol, balance: it.balance, quote: it.quote }));
+  });
+  return {
+    wallet: SAMPLE_WALLET,
+    address: SAMPLE_WALLET_RESOLVED,
+    chainsQueried: chains,
+    chainsSucceeded: [],
+    balances,
+    fetchedAt: new Date().toISOString(),
+    source: "simulated"
+  };
+}
+
 // Calls the same-origin serverless proxy (see /api/goldrush.js). The
 // proxy holds the real GoldRush API key server-side and already returns
 // balances converted to human-readable token amounts.
@@ -548,6 +566,38 @@ async function GOLDRUSH_FETCH(chain){
   const json = await res.json();
   if(!res.ok || json.error) throw new Error(json.error || ("Proxy request failed: " + res.status));
   return json; // { address, chain, items, source: "live" }
+}
+
+// Real multi-chain query — fires one proxy call per chain in parallel and
+// merges the raw results into a single payload, tagging each token with
+// the chain it came from. This is what /wallet-intelligence and
+// /cross-chain-balance actually call, since both are described as
+// multi-chain endpoints — a single-chain call would misrepresent them.
+async function GOLDRUSH_FETCH_MULTICHAIN(chains){
+  const results = await Promise.all(
+    chains.map(chain =>
+      GOLDRUSH_FETCH(chain)
+        .then(r => ({ chain, ok:true, items:r.items, address:r.address }))
+        .catch(err => ({ chain, ok:false, error: err.message }))
+    )
+  );
+  const succeeded = results.filter(r => r.ok);
+  if(succeeded.length === 0){
+    // every chain failed (proxy down / key missing) — let the caller fall back to mock
+    throw new Error(results[0] && results[0].error || "All chain queries failed");
+  }
+  const balances = succeeded.flatMap(r =>
+    r.items.map(it => ({ chain: r.chain, symbol: it.symbol, balance: it.balance, quote: it.quote }))
+  );
+  return {
+    wallet: SAMPLE_WALLET,
+    address: succeeded[0].address,
+    chainsQueried: chains,
+    chainsSucceeded: succeeded.map(r => r.chain),
+    balances,
+    fetchedAt: new Date().toISOString(),
+    source: "live"
+  };
 }
 
 // -----------------------------------------------------------------------
@@ -607,14 +657,21 @@ function EndpointCard({ ep, onPayment, pollTick }){
     setLoading(true);
     try{
       // ---- GoldRush data path, via the same-origin serverless proxy ----
-      // Falls back to simulated data automatically if the proxy 404s
-      // (no backend deployed) or 500s (key not configured yet).
+      // Multi-chain endpoints (wallet-intelligence, cross-chain-balance)
+      // genuinely query several chains in parallel and merge results.
+      // Single-chain endpoints query just their one configured chain.
+      // Either way: falls back to simulated data only if every real call
+      // fails (proxy not deployed yet, or GOLDRUSH_API_KEY missing) —
+      // never overwrites a successful live result with mock data.
       let result;
       try{
-        result = await GOLDRUSH_FETCH(ep.goldrushChain);
+        result = ep.goldrushChains
+          ? await GOLDRUSH_FETCH_MULTICHAIN(ep.goldrushChains)
+          : await GOLDRUSH_FETCH(ep.goldrushChain);
       }catch(proxyErr){
-        await new Promise(r => setTimeout(r, 250 + Math.random()*250));
-        result = mockGoldRushPayload(ep.goldrushChain);
+        result = ep.goldrushChains
+          ? mockGoldRushMultiChainPayload(ep.goldrushChains)
+          : mockGoldRushPayload(ep.goldrushChain);
       }
       if(!mounted.current) return;
       setPayload(result);
@@ -626,6 +683,15 @@ function EndpointCard({ ep, onPayment, pollTick }){
       if(mounted.current) setLoading(false);
     }
   }, [ep]);
+
+  // Fetch immediately on mount, then keep polling live data every 8s —
+  // this is a real recurring fetch loop against GoldRush via the proxy,
+  // not a randomized mock timer. Each tick re-queries the actual API.
+  useEffect(() => {
+    runQuery();
+    const interval = setInterval(runQuery, 8000);
+    return () => clearInterval(interval);
+  }, [runQuery]);
 
   // light metric drift on every poll tick, independent of the query above
   useEffect(() => {
@@ -641,14 +707,6 @@ function EndpointCard({ ep, onPayment, pollTick }){
       });
     }
   }, [pollTick]);
-
-  // Fire the first GoldRush query the instant this card mounts, so the
-  // dashboard is already live the moment the page finishes loading —
-  // clicking the card re-runs the query on demand after that.
-  useEffect(() => {
-    runQuery();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function handleCopy(e){
     e.stopPropagation();
@@ -681,10 +739,12 @@ function EndpointCard({ ep, onPayment, pollTick }){
       ),
       h("div", null,
         h("div", { className:"payload-box" },
-          loading ? h("span", { className:"loading-tag" }, "// querying " + SAMPLE_WALLET + " on " + ep.goldrushChain + " …") :
+          loading ? h("span", { className:"loading-tag" }, "// querying " + SAMPLE_WALLET + " on " + (ep.goldrushChains ? ep.goldrushChains.join(", ") : ep.goldrushChain) + " …") :
             JSON.stringify(payload, null, 2)
         ),
-        h("div", { className:"payload-source" }, "source: " + source)
+        h("div", { className:"payload-source" },
+          "source: " + source + (payload && payload.fetchedAt ? " · updated " + new Date(payload.fetchedAt).toLocaleTimeString() : "")
+        )
       )
     ),
     h("div", { className:"ep-foot" },
